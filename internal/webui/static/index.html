@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CosmosDB Light Explorer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%230078d4'/><text x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-family='sans-serif'>C</text></svg>">
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <svg class="header-icon" viewBox="0 0 32 32" width="28" height="28">
+                <circle cx="16" cy="16" r="14" fill="#0078d4"/>
+                <ellipse cx="16" cy="16" rx="12" ry="5" fill="none" stroke="white" stroke-width="1.5"/>
+                <ellipse cx="16" cy="16" rx="12" ry="5" fill="none" stroke="white" stroke-width="1.5" transform="rotate(60 16 16)"/>
+                <ellipse cx="16" cy="16" rx="12" ry="5" fill="none" stroke="white" stroke-width="1.5" transform="rotate(120 16 16)"/>
+                <circle cx="16" cy="16" r="2.5" fill="white"/>
+            </svg>
+            <h1 class="header-title">CosmosDB Light Explorer</h1>
+        </div>
+        <div class="header-right">
+            <span class="connection-status" id="connectionStatus">● Connected</span>
+        </div>
+    </header>
+
+    <div class="app-layout">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">DATABASES</span>
+                <div class="sidebar-actions">
+                    <button class="icon-btn" id="btnRefreshDbs" title="Refresh">⟳</button>
+                    <button class="icon-btn" id="btnCreateDb" title="Create Database">＋</button>
+                </div>
+            </div>
+            <div class="tree-view" id="treeView">
+                <div class="tree-empty" id="treeEmpty">No databases found.<br>Click ＋ to create one.</div>
+            </div>
+        </aside>
+
+        <main class="main-content" id="mainContent">
+            <div class="welcome-panel" id="welcomePanel">
+                <svg viewBox="0 0 64 64" width="64" height="64" style="margin-bottom: 16px; opacity: 0.4;">
+                    <circle cx="32" cy="32" r="28" fill="none" stroke="#0078d4" stroke-width="2"/>
+                    <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#0078d4" stroke-width="1.5"/>
+                    <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#0078d4" stroke-width="1.5" transform="rotate(60 32 32)"/>
+                    <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#0078d4" stroke-width="1.5" transform="rotate(120 32 32)"/>
+                    <circle cx="32" cy="32" r="4" fill="#0078d4"/>
+                </svg>
+                <h2>Welcome to CosmosDB Light Explorer</h2>
+                <p>Select a container from the sidebar to browse documents, or create a new database to get started.</p>
+            </div>
+
+            <div class="container-view" id="containerView" style="display: none;">
+                <div class="query-bar">
+                    <div class="query-input-wrap">
+                        <input type="text" id="queryInput" class="query-input" placeholder="SELECT * FROM c" value="SELECT * FROM c">
+                        <button class="btn btn-primary" id="btnRunQuery">▶ Run Query</button>
+                    </div>
+                </div>
+
+                <div class="content-toolbar">
+                    <div class="toolbar-left">
+                        <span class="toolbar-label" id="docCountLabel">0 documents</span>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-secondary" id="btnNewDoc">＋ New Document</button>
+                        <button class="btn btn-secondary" id="btnRefreshDocs">⟳ Refresh</button>
+                        <button class="btn btn-danger" id="btnDeleteDoc" disabled>✕ Delete</button>
+                    </div>
+                </div>
+
+                <div class="content-split">
+                    <div class="doc-list-panel">
+                        <table class="doc-table" id="docTable">
+                            <thead>
+                                <tr>
+                                    <th class="col-check"><input type="checkbox" id="selectAllDocs"></th>
+                                    <th class="col-id">id</th>
+                                    <th class="col-pk">Partition Key</th>
+                                    <th class="col-preview">Preview</th>
+                                </tr>
+                            </thead>
+                            <tbody id="docTableBody">
+                            </tbody>
+                        </table>
+                        <div class="doc-list-empty" id="docListEmpty">No documents found.</div>
+                    </div>
+
+                    <div class="doc-editor-panel" id="docEditorPanel" style="display: none;">
+                        <div class="editor-header">
+                            <span class="editor-title" id="editorTitle">Document</span>
+                            <div class="editor-actions">
+                                <button class="btn btn-primary" id="btnSaveDoc">💾 Save</button>
+                                <button class="btn btn-secondary" id="btnCloseEditor">✕</button>
+                            </div>
+                        </div>
+                        <textarea class="json-editor" id="jsonEditor" spellcheck="false"></textarea>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create Database Dialog -->
+    <div class="modal-overlay" id="createDbDialog" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create Database</h3>
+                <button class="icon-btn modal-close" id="closeCreateDb">✕</button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Database ID</label>
+                <input type="text" class="form-input" id="newDbName" placeholder="Enter database name">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelCreateDb">Cancel</button>
+                <button class="btn btn-primary" id="confirmCreateDb">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Container Dialog -->
+    <div class="modal-overlay" id="createContainerDialog" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create Container</h3>
+                <button class="icon-btn modal-close" id="closeCreateContainer">✕</button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Container ID</label>
+                <input type="text" class="form-input" id="newContainerName" placeholder="Enter container name">
+                <label class="form-label" style="margin-top: 12px;">Partition Key Path</label>
+                <input type="text" class="form-input" id="newPartitionKey" placeholder="/partitionKey" value="/id">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelCreateContainer">Cancel</button>
+                <button class="btn btn-primary" id="confirmCreateContainer">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Dialog -->
+    <div class="modal-overlay" id="confirmDialog" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="confirmDialogTitle">Confirm Delete</h3>
+                <button class="icon-btn modal-close" id="closeConfirm">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmDialogMessage">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelConfirm">Cancel</button>
+                <button class="btn btn-danger" id="confirmAction">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
