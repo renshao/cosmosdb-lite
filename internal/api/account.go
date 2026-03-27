@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/shaoren/cosmosdb-light/internal/store"
+	"github.com/shaoren/cosmosdb-lite/internal/store"
 )
 
 // handleGetAccount returns the database account metadata.

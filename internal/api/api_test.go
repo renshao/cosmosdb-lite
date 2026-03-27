@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shaoren/cosmosdb-light/internal/auth"
-	"github.com/shaoren/cosmosdb-light/internal/store"
+	"github.com/shaoren/cosmosdb-lite/internal/auth"
+	"github.com/shaoren/cosmosdb-lite/internal/store"
 )
 
 // authRequest creates an authenticated HTTP request.

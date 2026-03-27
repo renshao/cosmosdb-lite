@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shaoren/cosmosdb-light/internal/store"
+	"github.com/shaoren/cosmosdb-lite/internal/store"
 )
 
 // Router holds the HTTP multiplexer and backing store for the CosmosDB emulator API.

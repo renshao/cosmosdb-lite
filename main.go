@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shaoren/cosmosdb-light/internal/api"
-	"github.com/shaoren/cosmosdb-light/internal/cert"
-	"github.com/shaoren/cosmosdb-light/internal/store"
+	"github.com/shaoren/cosmosdb-lite/internal/api"
+	"github.com/shaoren/cosmosdb-lite/internal/cert"
+	"github.com/shaoren/cosmosdb-lite/internal/store"
 )
 
 func main() {
@@ -49,8 +49,8 @@ func main() {
 	}
 
 	// Generate or load TLS certificate
-	certFile := filepath.Join(*certDir, "cosmosdb-light.crt")
-	keyFile := filepath.Join(*certDir, "cosmosdb-light.key")
+	certFile := filepath.Join(*certDir, "cosmosdb-lite.crt")
+	keyFile := filepath.Join(*certDir, "cosmosdb-lite.key")
 	if err := cert.EnsureCert(certFile, keyFile); err != nil {
 		log.Fatalf("Failed to generate TLS certificate: %v", err)
 	}
@@ -60,7 +60,7 @@ func main() {
 	// Print startup info
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║              CosmosDB Light — Local Emulator                ║")
+	fmt.Println("║              CosmosDB Lite — Local Emulator                 ║")
 	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
 	fmt.Printf("║  Endpoint:  https://localhost:%d/                        ║\n", *port)
 	fmt.Println("║  Key:       C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2  ║")
@@ -83,7 +83,7 @@ func main() {
 func defaultCertDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".cosmosdb-light"
+		return ".cosmosdb-lite"
 	}
-	return filepath.Join(home, ".cosmosdb-light")
+	return filepath.Join(home, ".cosmosdb-lite")
 }

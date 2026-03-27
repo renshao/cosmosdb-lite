@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shaoren/cosmosdb-light/internal/auth"
+	"github.com/shaoren/cosmosdb-lite/internal/auth"
 )
 
 // responseRecorder captures the status code for logging.

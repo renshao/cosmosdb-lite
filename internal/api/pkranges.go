@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/shaoren/cosmosdb-light/internal/store"
+	"github.com/shaoren/cosmosdb-lite/internal/store"
 )
 
 // handleGetPKRanges returns partition key ranges for a container.

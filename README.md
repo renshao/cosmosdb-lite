@@ -1,11 +1,11 @@
-# cosmosdb-light
+# cosmosdb-lite
 
 Lightweight Azure CosmosDB (NoSQL) emulator for local development and CI.
 Single binary, no external dependencies — existing SDKs connect with zero code changes.
 
 ## Overview
 
-**cosmosdb-light** implements a subset of the Azure CosmosDB NoSQL REST API so you
+**cosmosdb-lite** implements a subset of the Azure CosmosDB NoSQL REST API so you
 can develop and test locally without an Azure subscription or the full
 [Azure Cosmos DB Emulator](https://learn.microsoft.com/en-us/azure/cosmos-db/emulator).
 It speaks the same HTTPS protocol and accepts the same well-known emulator master
@@ -24,8 +24,8 @@ key, making it a drop-in replacement for most development workflows.
 ## Quick Start
 
 ```bash
-go build -o cosmosdb-light ./cmd/cosmosdb-light
-./cosmosdb-light
+go build -o cosmosdb-lite .
+./cosmosdb-lite
 ```
 
 Server starts at **https://localhost:8081**.
@@ -36,7 +36,7 @@ Server starts at **https://localhost:8081**.
 |------|---------|-------------|
 | `--port` | `8081` | HTTPS port |
 | `--data-dir` | *(empty)* | Directory for persistent JSON storage (default: in-memory only) |
-| `--cert-dir` | `~/.cosmosdb-light/` | Directory for the auto-generated TLS cert and key |
+| `--cert-dir` | `~/.cosmosdb-lite/` | Directory for the auto-generated TLS cert and key |
 | `--no-auth` | `false` | Disable HMAC auth validation |
 | `--log-level` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 
@@ -155,7 +155,7 @@ certificate at the OS level.
 ### Windows
 
 ```powershell
-Import-Certificate -FilePath "$env:USERPROFILE\.cosmosdb-light\cosmosdb-light.crt" `
+Import-Certificate -FilePath "$env:USERPROFILE\.cosmosdb-lite\cosmosdb-lite.crt" `
     -CertStoreLocation Cert:\CurrentUser\Root
 ```
 
@@ -164,20 +164,20 @@ Import-Certificate -FilePath "$env:USERPROFILE\.cosmosdb-light\cosmosdb-light.cr
 ```bash
 sudo security add-trusted-cert -d -r trustRoot \
     -k /Library/Keychains/System.keychain \
-    ~/.cosmosdb-light/cosmosdb-light.crt
+    ~/.cosmosdb-lite/cosmosdb-lite.crt
 ```
 
 ### Linux (Ubuntu / Debian)
 
 ```bash
-sudo cp ~/.cosmosdb-light/cosmosdb-light.crt /usr/local/share/ca-certificates/cosmosdb-light.crt
+sudo cp ~/.cosmosdb-lite/cosmosdb-lite.crt /usr/local/share/ca-certificates/cosmosdb-lite.crt
 sudo update-ca-certificates
 ```
 
 ### Linux (RHEL / CentOS / Fedora)
 
 ```bash
-sudo cp ~/.cosmosdb-light/cosmosdb-light.crt /etc/pki/ca-trust/source/anchors/cosmosdb-light.crt
+sudo cp ~/.cosmosdb-lite/cosmosdb-lite.crt /etc/pki/ca-trust/source/anchors/cosmosdb-lite.crt
 sudo update-ca-trust
 ```
 
