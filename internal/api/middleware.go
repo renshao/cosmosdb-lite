@@ -165,7 +165,7 @@ func (rt *Router) commonHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("x-ms-request-charge", "1")
 		w.Header().Set("x-ms-activity-id", generateActivityID())
-		w.Header().Set("x-ms-session-token", "0:0")
+		w.Header().Set("x-ms-session-token", "0:-1#1")
 		next.ServeHTTP(w, r)
 	})
 }
