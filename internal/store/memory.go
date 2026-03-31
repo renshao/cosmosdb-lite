@@ -557,27 +557,24 @@ func extractPartitionKey(doc Document, pk PartitionKey) string {
 }
 
 // generateRIDBytes generates n random bytes for use as a resource ID component.
-// Uses crypto/rand for realistic values matching real CosmosDB RID byte ranges.
-// Retries if the base64 encoding contains '/' or '+' (which break URL paths).
 func generateRIDBytes(n int) []byte {
-	for {
-		b := make([]byte, n)
-		_, _ = rand.Read(b)
-		encoded := base64.StdEncoding.EncodeToString(b)
-		if !strings.ContainsAny(encoded, "/+") {
-			return b
-		}
-	}
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return b
 }
 
-// encodeRID encodes raw bytes as standard base64 (matching real CosmosDB _rid format).
+// encodeRID encodes raw bytes as URL-safe base64, matching real CosmosDB _rid format.
 func encodeRID(b []byte) string {
-	return base64.StdEncoding.EncodeToString(b)
+	return base64.URLEncoding.EncodeToString(b)
 }
 
 // decodeRID decodes a base64-encoded _rid back to raw bytes.
+// Accepts both URL-safe and standard base64 for backward compatibility.
 func decodeRID(rid string) []byte {
-	b, _ := base64.StdEncoding.DecodeString(rid)
+	b, err := base64.URLEncoding.DecodeString(rid)
+	if err != nil {
+		b, _ = base64.StdEncoding.DecodeString(rid)
+	}
 	return b
 }
 

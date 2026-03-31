@@ -100,10 +100,11 @@ func buildPKRangesResponse(coll *store.Container) map[string]interface{} {
 // buildPKRangeEntry builds a single partition key range entry matching the
 // real CosmosDB response format, including fields the SDK validates.
 func buildPKRangeEntry(coll *store.Container, index int) map[string]interface{} {
+	pkRangeRID := store.GeneratePKRangeRID(coll.RID, index)
 	return map[string]interface{}{
 		"id":                 fmt.Sprintf("%d", index),
-		"_rid":               store.GeneratePKRangeRID(coll.RID, index),
-		"_self":              coll.Self + fmt.Sprintf("pkranges/%d/", index),
+		"_rid":               pkRangeRID,
+		"_self":              coll.Self + fmt.Sprintf("pkranges/%s/", pkRangeRID),
 		"_etag":              coll.ETag,
 		"minInclusive":       "",
 		"maxExclusive":       "FF",
