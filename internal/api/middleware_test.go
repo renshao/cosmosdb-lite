@@ -6,9 +6,9 @@ import (
 
 func TestParseAuthResource(t *testing.T) {
 	tests := []struct {
-		path         string
-		wantType     string
-		wantLink     string
+		path     string
+		wantType string
+		wantLink string
 	}{
 		// Root
 		{"/", "", ""},

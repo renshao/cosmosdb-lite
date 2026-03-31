@@ -21,8 +21,8 @@ type dbEntry struct {
 
 // collEntry holds a container and its documents keyed by partitionKey → docID → doc.
 type collEntry struct {
-	Container *Container                      `json:"container"`
-	Documents map[string]map[string]Document  `json:"documents"`
+	Container *Container                     `json:"container"`
+	Documents map[string]map[string]Document `json:"documents"`
 }
 
 // MemoryStore is an in-memory implementation of Store with optional JSON persistence.
@@ -133,16 +133,16 @@ func (m *MemoryStore) CreateContainer(dbID string, id string, pk PartitionKey) (
 	copy(collRidBytes[len(dbRidBytes):], generateRIDBytes(4))
 	rid := encodeRID(collRidBytes)
 	coll := &Container{
-		ID:        id,
-		RID:       rid,
-		Self:      "dbs/" + dbE.DB.RID + "/colls/" + rid + "/",
-		ETag:      generateETag(),
-		Docs:      "docs/",
-		Sprocs:    "sprocs/",
-		Triggers:  "triggers/",
-		Udfs:      "udfs/",
-		Conflicts: "conflicts/",
-		TS:        NowUnix(),
+		ID:           id,
+		RID:          rid,
+		Self:         "dbs/" + dbE.DB.RID + "/colls/" + rid + "/",
+		ETag:         generateETag(),
+		Docs:         "docs/",
+		Sprocs:       "sprocs/",
+		Triggers:     "triggers/",
+		Udfs:         "udfs/",
+		Conflicts:    "conflicts/",
+		TS:           NowUnix(),
 		PartitionKey: pk,
 		IndexingPolicy: IndexPolicy{
 			IndexingMode: "consistent",
@@ -653,10 +653,10 @@ func (m *MemoryStore) loadFromDisk() error {
 
 // queryCondition represents a single WHERE condition.
 type queryCondition struct {
-	field    string        // e.g. "category"
-	op       string        // "=" or "IN"
-	value    interface{}   // single value for "="
-	values   []interface{} // multiple values for "IN"
+	field  string        // e.g. "category"
+	op     string        // "=" or "IN"
+	value  interface{}   // single value for "="
+	values []interface{} // multiple values for "IN"
 }
 
 // parseQuery extracts WHERE conditions from a simple SQL query.

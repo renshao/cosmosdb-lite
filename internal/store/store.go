@@ -4,29 +4,29 @@ import "time"
 
 // Database represents a CosmosDB database.
 type Database struct {
-	ID          string `json:"id"`
-	RID         string `json:"_rid"`
-	Self        string `json:"_self"`
-	ETag        string `json:"_etag"`
-	Colls       string `json:"_colls"`
-	Users       string `json:"_users"`
-	TS          int64  `json:"_ts"`
+	ID    string `json:"id"`
+	RID   string `json:"_rid"`
+	Self  string `json:"_self"`
+	ETag  string `json:"_etag"`
+	Colls string `json:"_colls"`
+	Users string `json:"_users"`
+	TS    int64  `json:"_ts"`
 }
 
 // Container represents a CosmosDB container (collection).
 type Container struct {
-	ID             string        `json:"id"`
-	RID            string        `json:"_rid"`
-	Self           string        `json:"_self"`
-	ETag           string        `json:"_etag"`
-	Docs           string        `json:"_docs"`
-	Sprocs         string        `json:"_sprocs"`
-	Triggers       string        `json:"_triggers"`
-	Udfs           string        `json:"_udfs"`
-	Conflicts      string        `json:"_conflicts"`
-	TS             int64         `json:"_ts"`
-	PartitionKey   PartitionKey  `json:"partitionKey"`
-	IndexingPolicy IndexPolicy   `json:"indexingPolicy"`
+	ID             string       `json:"id"`
+	RID            string       `json:"_rid"`
+	Self           string       `json:"_self"`
+	ETag           string       `json:"_etag"`
+	Docs           string       `json:"_docs"`
+	Sprocs         string       `json:"_sprocs"`
+	Triggers       string       `json:"_triggers"`
+	Udfs           string       `json:"_udfs"`
+	Conflicts      string       `json:"_conflicts"`
+	TS             int64        `json:"_ts"`
+	PartitionKey   PartitionKey `json:"partitionKey"`
+	IndexingPolicy IndexPolicy  `json:"indexingPolicy"`
 }
 
 // PartitionKey defines the partition key configuration.

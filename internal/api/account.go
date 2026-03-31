@@ -17,13 +17,13 @@ func (rt *Router) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 	endpoint := fmt.Sprintf("https://%s/", host)
 
 	resp := map[string]interface{}{
-		"id":                "localhost",
-		"_rid":              "localhost",
-		"media":             "//media/",
-		"addresses":         "//",
-		"_self":             "",
-		"_dbs":              "//dbs/",
-		"systemReplicatorStatus": "N/A",
+		"id":                       "localhost",
+		"_rid":                     "localhost",
+		"media":                    "//media/",
+		"addresses":                "//",
+		"_self":                    "",
+		"_dbs":                     "//dbs/",
+		"systemReplicatorStatus":   "N/A",
 		"queryEngineConfiguration": `{"maxSqlQueryInputLength":262144,"maxJoinsPerSqlQuery":5,"maxLogicalAndPerSqlQuery":500,"maxLogicalOrPerSqlQuery":500,"maxUdfRefPerSqlQuery":10,"maxInExpressionItemsCount":16000,"queryMaxInMemorySortDocumentCount":500,"maxQueryRequestTimeoutFraction":0.9,"sqlAllowNonFiniteNumbers":false,"sqlAllowAggregateFunctions":true,"sqlAllowSubQuery":true,"sqlAllowScalarSubQuery":true,"allowNewKeywords":true,"sqlAllowLike":true,"sqlAllowGroupByClause":true,"maxSpatialQueryCells":12,"spatialMaxGeometryPointCount":256,"sqlDisableOptimizationFlags":0,"sqlAllowTop":true,"enableSpatialIndexing":true}`,
 		"writableLocations": []map[string]interface{}{
 			{

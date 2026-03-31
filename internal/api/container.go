@@ -9,7 +9,7 @@ import (
 )
 
 type createContainerRequest struct {
-	ID           string            `json:"id"`
+	ID           string              `json:"id"`
 	PartitionKey *store.PartitionKey `json:"partitionKey,omitempty"`
 }
 

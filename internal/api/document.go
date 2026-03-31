@@ -175,7 +175,7 @@ func (rt *Router) handleQueryDocuments(w http.ResponseWriter, r *http.Request) {
 	collId := r.PathValue("collId")
 
 	var body struct {
-		Query      string            `json:"query"`
+		Query      string             `json:"query"`
 		Parameters []store.QueryParam `json:"parameters"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
