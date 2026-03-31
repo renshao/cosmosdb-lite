@@ -57,7 +57,7 @@ func NewRouter(s store.Store, authEnabled bool) *Router {
 	rt.mux.Handle("DELETE /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handleDeleteDocument))
 
 	// Partition key ranges (no auth — static partition metadata)
-	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/pkranges", rt.commonHeaders(http.HandlerFunc(rt.handleGetPKRanges)))
+	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/pkranges", rt.commonHeaders(rt.ridResolver(http.HandlerFunc(rt.handleGetPKRanges))))
 
 	// Web UI (no auth)
 	rt.mux.Handle("GET /_explorer/", http.StripPrefix("/_explorer/", http.FileServer(http.Dir("internal/webui/static"))))

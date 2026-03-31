@@ -18,8 +18,8 @@ func (rt *Router) handleGetAccount(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]interface{}{
 		"id":                "localhost",
-		"_rid":              "",
-		"media":             "//",
+		"_rid":              "localhost",
+		"media":             "//media/",
 		"addresses":         "//",
 		"_self":             "",
 		"_dbs":              "//dbs/",

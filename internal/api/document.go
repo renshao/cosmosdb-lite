@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -25,16 +26,25 @@ func (rt *Router) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	dbId := r.PathValue("dbId")
 	collId := r.PathValue("collId")
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BadRequest", "failed to read body")
+		return
+	}
+	fmt.Printf("DEBUG CreateDocument db=%s coll=%s contentType=%s isQuery=%s body=%s\n",
+		dbId, collId, r.Header.Get("Content-Type"), r.Header.Get("x-ms-documentdb-isquery"), string(bodyBytes))
+
 	// Check if this is actually a query request.
 	isQuery := strings.EqualFold(r.Header.Get("x-ms-documentdb-isquery"), "true") ||
 		strings.Contains(r.Header.Get("Content-Type"), "application/query+json")
 	if isQuery {
+		r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 		rt.handleQueryDocuments(w, r)
 		return
 	}
 
 	var doc store.Document
-	if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {
+	if err := json.Unmarshal(bodyBytes, &doc); err != nil {
 		writeError(w, http.StatusBadRequest, "BadRequest", "invalid JSON body")
 		return
 	}
@@ -53,6 +63,7 @@ func (rt *Router) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &cf):
 			writeError(w, http.StatusConflict, "Conflict", cf.Error())
 		default:
+			fmt.Printf("ERROR CreateDocument db=%s coll=%s: %v\n", dbId, collId, err)
 			writeError(w, http.StatusInternalServerError, "InternalError", err.Error())
 		}
 		return

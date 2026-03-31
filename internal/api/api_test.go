@@ -303,7 +303,84 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
-	// 14. Auth failure
+	// 14. PKRanges with db-level RID (SDK sends db RID as collId)
+	t.Run("PKRangesDBLevel", func(t *testing.T) {
+		// Create a fresh db + container for this sub-test.
+		req := authRequest(t, "POST", srv.URL+"/dbs", "dbs", "", strings.NewReader(`{"id":"pkdb"}`))
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected 201, got %d: %s", resp.StatusCode, b)
+		}
+		dbResult := readBody(t, resp)
+		dbRID := dbResult["_rid"].(string)
+
+		body := `{"id":"pkcoll","partitionKey":{"paths":["/pk"],"kind":"Hash"}}`
+		req = authRequest(t, "POST", srv.URL+"/dbs/pkdb/colls", "colls", "dbs/pkdb", strings.NewReader(body))
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected 201, got %d: %s", resp.StatusCode, b)
+		}
+		resp.Body.Close()
+
+		// Request pkranges using db RID as both dbId and collId (no auth on this route).
+		pkURL := srv.URL + "/dbs/" + dbRID + "/colls/" + dbRID + "/pkranges"
+		req, err = http.NewRequest("GET", pkURL, nil)
+		if err != nil {
+			t.Fatalf("creating request: %v", err)
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected 200, got %d: %s", resp.StatusCode, b)
+		}
+		result := readBody(t, resp)
+		count, ok := result["_count"].(float64)
+		if !ok || count != 1 {
+			t.Fatalf("expected _count=1, got %v", result["_count"])
+		}
+		ranges, ok := result["PartitionKeyRanges"].([]interface{})
+		if !ok || len(ranges) != 1 {
+			t.Fatalf("expected 1 PartitionKeyRange, got %v", result["PartitionKeyRanges"])
+		}
+		if result["_rid"] == dbRID {
+			t.Errorf("top-level _rid should be the container RID, not the database RID %s", dbRID)
+		}
+		if result["_rid"] == nil || result["_rid"] == "" {
+			t.Errorf("top-level _rid should not be empty")
+		}
+
+		// Verify pkrange entry has required fields
+		pkr := ranges[0].(map[string]interface{})
+		for _, field := range []string{"lsn", "throughputFraction", "parents", "_rid"} {
+			if _, ok := pkr[field]; !ok {
+				t.Errorf("pkrange entry missing field %q", field)
+			}
+		}
+
+		// Cleanup
+		req = authRequest(t, "DELETE", srv.URL+"/dbs/pkdb", "dbs", "dbs/pkdb", nil)
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp.Body.Close()
+	})
+
+	// 15. Auth failure
 	t.Run("AuthFailure", func(t *testing.T) {
 		req, err := http.NewRequest("GET", srv.URL+"/dbs", nil)
 		if err != nil {

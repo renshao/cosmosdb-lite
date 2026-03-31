@@ -556,23 +556,18 @@ func extractPartitionKey(doc Document, pk PartitionKey) string {
 	return fmt.Sprintf("%v", val)
 }
 
-// ridCounter is an atomic counter for generating sequential _rid values.
-var ridCounter uint32
-
-// generateRIDBytes generates n bytes for use as a resource ID component.
-// Uses an atomic counter to produce sequential, deterministic values
-// that encode cleanly in standard base64 without producing '/' characters.
+// generateRIDBytes generates n random bytes for use as a resource ID component.
+// Uses crypto/rand for realistic values matching real CosmosDB RID byte ranges.
+// Retries if the base64 encoding contains '/' or '+' (which break URL paths).
 func generateRIDBytes(n int) []byte {
-	ridCounter++
-	b := make([]byte, n)
-	val := ridCounter
-	// Write counter value in little-endian (matching CosmosDB's internal format),
-	// which keeps base64 output free of '/' for reasonable counter values.
-	for i := 0; i < n && val > 0; i++ {
-		b[i] = byte(val & 0x3F) // Keep values in 0-63 range to avoid '/' in base64
-		val >>= 6
+	for {
+		b := make([]byte, n)
+		_, _ = rand.Read(b)
+		encoded := base64.StdEncoding.EncodeToString(b)
+		if !strings.ContainsAny(encoded, "/+") {
+			return b
+		}
 	}
-	return b
 }
 
 // encodeRID encodes raw bytes as standard base64 (matching real CosmosDB _rid format).
@@ -584,6 +579,19 @@ func encodeRID(b []byte) string {
 func decodeRID(rid string) []byte {
 	b, _ := base64.StdEncoding.DecodeString(rid)
 	return b
+}
+
+// GeneratePKRangeRID builds a 16-byte pkrange-specific _rid from a container
+// RID (8 bytes) plus an 8-byte suffix encoding the range index.
+// Real CosmosDB pkrange RIDs follow this hierarchical pattern.
+func GeneratePKRangeRID(containerRID string, index int) string {
+	collBytes := decodeRID(containerRID)
+	b := make([]byte, len(collBytes)+8)
+	copy(b, collBytes)
+	// Encode the index in the first byte of the suffix (little-endian),
+	// matching the pattern seen in real CosmosDB responses.
+	b[len(collBytes)] = byte(index + 2) // +2: real CosmosDB starts pkrange suffix at 0x02
+	return encodeRID(b)
 }
 
 func generateETag() string {
@@ -640,9 +648,12 @@ func (m *MemoryStore) loadFromDisk() error {
 
 // ---- Basic SQL query parser ----
 
+// queryCondition represents a single WHERE condition.
 type queryCondition struct {
-	field string      // e.g. "category"
-	value interface{} // string or float64
+	field    string        // e.g. "category"
+	op       string        // "=" or "IN"
+	value    interface{}   // single value for "="
+	values   []interface{} // multiple values for "IN"
 }
 
 // parseQuery extracts WHERE conditions from a simple SQL query.
@@ -652,6 +663,12 @@ type queryCondition struct {
 //	SELECT * FROM c WHERE c.field = 'value'
 //	SELECT * FROM c WHERE c.field = 'value' AND c.field2 = 123
 //	SELECT * FROM c WHERE c.field = @param
+//	SELECT * FROM c WHERE c.field IN (@p1, @p2)
+//	SELECT * FROM c WHERE c.field = 'a' OR c.field = 'b'
+//	SELECT * FROM c WHERE (c.field = 'a' OR c.field = 'b')
+//
+// For unsupported query syntax, returns nil conditions (matches all documents)
+// rather than an error, so the SDK doesn't receive 500 for queries we can't parse.
 func parseQuery(query string, params []QueryParam) ([]queryCondition, error) {
 	normalized := strings.TrimSpace(query)
 
@@ -673,20 +690,27 @@ func parseQuery(query string, params []QueryParam) ([]queryCondition, error) {
 		paramMap[p.Name] = p.Value
 	}
 
-	// Split on AND (case-insensitive).
-	parts := splitAND(whereClause)
+	// Split on top-level AND (case-insensitive), respecting parentheses.
+	parts := splitTopLevelAND(whereClause)
 
 	var conditions []queryCondition
 	for _, part := range parts {
-		cond, err := parseCondition(strings.TrimSpace(part), paramMap)
+		part = strings.TrimSpace(part)
+		// Strip wrapping parentheses: "(expr)" → "expr"
+		part = stripParens(part)
+
+		conds, err := parseConditionGroup(part, paramMap)
 		if err != nil {
-			return nil, err
+			// For unsupported syntax, return nil to match all documents
+			// rather than returning 500 to the SDK.
+			return nil, nil
 		}
-		conditions = append(conditions, cond)
+		conditions = append(conditions, conds...)
 	}
 	return conditions, nil
 }
 
+// stripParens removes a single layer of wrapping parentheses if present.
 // findWhereIndex returns the index of the WHERE keyword (case-insensitive, word boundary).
 func findWhereIndex(q string) int {
 	re := regexp.MustCompile(`(?i)\bWHERE\b`)
@@ -697,36 +721,158 @@ func findWhereIndex(q string) int {
 	return loc[0]
 }
 
-// splitAND splits a WHERE clause on AND keywords (case-insensitive, word boundary).
-func splitAND(clause string) []string {
-	re := regexp.MustCompile(`(?i)\bAND\b`)
-	return re.Split(clause, -1)
+func stripParens(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')' {
+		// Verify the parens are balanced (the closing paren matches the opening one).
+		depth := 0
+		for i, ch := range s {
+			if ch == '(' {
+				depth++
+			} else if ch == ')' {
+				depth--
+			}
+			if depth == 0 && i < len(s)-1 {
+				return s // closing paren doesn't match the opening one
+			}
+		}
+		return strings.TrimSpace(s[1 : len(s)-1])
+	}
+	return s
 }
 
-var conditionRe = regexp.MustCompile(
+// parseConditionGroup parses a condition that may contain OR.
+// "c.x = 1 OR c.x = 2" → single IN-style condition on field x.
+func parseConditionGroup(expr string, paramMap map[string]interface{}) ([]queryCondition, error) {
+	orParts := splitTopLevelOR(expr)
+	if len(orParts) == 1 {
+		cond, err := parseSingleCondition(strings.TrimSpace(orParts[0]), paramMap)
+		if err != nil {
+			return nil, err
+		}
+		return []queryCondition{cond}, nil
+	}
+
+	// Multiple OR branches — merge into an IN condition if all on same field.
+	var field string
+	var values []interface{}
+	for _, orPart := range orParts {
+		orPart = stripParens(strings.TrimSpace(orPart))
+		cond, err := parseSingleCondition(orPart, paramMap)
+		if err != nil {
+			return nil, err
+		}
+		if cond.op == "IN" {
+			if field == "" {
+				field = cond.field
+			} else if field != cond.field {
+				return nil, fmt.Errorf("unsupported OR across different fields")
+			}
+			values = append(values, cond.values...)
+		} else {
+			if field == "" {
+				field = cond.field
+			} else if field != cond.field {
+				return nil, fmt.Errorf("unsupported OR across different fields")
+			}
+			values = append(values, cond.value)
+		}
+	}
+	return []queryCondition{{field: field, op: "IN", values: values}}, nil
+}
+
+// splitTopLevelAND splits on AND keywords not inside parentheses.
+func splitTopLevelAND(clause string) []string {
+	return splitTopLevel(clause, `(?i)\bAND\b`)
+}
+
+// splitTopLevelOR splits on OR keywords not inside parentheses.
+func splitTopLevelOR(clause string) []string {
+	return splitTopLevel(clause, `(?i)\bOR\b`)
+}
+
+// splitTopLevel splits a clause on a keyword pattern, respecting parentheses.
+func splitTopLevel(clause, pattern string) []string {
+	re := regexp.MustCompile(pattern)
+	locs := re.FindAllStringIndex(clause, -1)
+	if len(locs) == 0 {
+		return []string{clause}
+	}
+
+	var parts []string
+	prev := 0
+	for _, loc := range locs {
+		// Only split if the keyword is at parenthesis depth 0.
+		if parenDepth(clause[:loc[0]]) == 0 {
+			parts = append(parts, clause[prev:loc[0]])
+			prev = loc[1]
+		}
+	}
+	parts = append(parts, clause[prev:])
+	return parts
+}
+
+// parenDepth counts the net parenthesis depth of a string.
+func parenDepth(s string) int {
+	depth := 0
+	for _, ch := range s {
+		if ch == '(' {
+			depth++
+		} else if ch == ')' {
+			depth--
+		}
+	}
+	return depth
+}
+
+var conditionInRe = regexp.MustCompile(
+	`(?i)^([a-zA-Z_][a-zA-Z0-9_.]*)\s+IN\s*\((.+)\)$`,
+)
+
+var conditionEqRe = regexp.MustCompile(
 	`^([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*(.+)$`,
 )
 
-func parseCondition(expr string, paramMap map[string]interface{}) (queryCondition, error) {
-	m := conditionRe.FindStringSubmatch(expr)
-	if m == nil {
-		return queryCondition{}, fmt.Errorf("unsupported condition: %s", expr)
+// parseSingleCondition parses "field = value" or "field IN (v1, v2, ...)"
+func parseSingleCondition(expr string, paramMap map[string]interface{}) (queryCondition, error) {
+	expr = stripParens(expr)
+
+	// Try IN first
+	if m := conditionInRe.FindStringSubmatch(expr); m != nil {
+		fieldPath := stripAlias(m[1])
+		valuesStr := m[2]
+		valParts := strings.Split(valuesStr, ",")
+		var values []interface{}
+		for _, vp := range valParts {
+			v, err := resolveValue(strings.TrimSpace(vp), paramMap)
+			if err != nil {
+				return queryCondition{}, err
+			}
+			values = append(values, v)
+		}
+		return queryCondition{field: fieldPath, op: "IN", values: values}, nil
 	}
 
-	fieldPath := m[1]
-	rawValue := strings.TrimSpace(m[2])
-
-	// Strip alias prefix (e.g. "c.category" → "category").
-	if dotIdx := strings.IndexByte(fieldPath, '.'); dotIdx != -1 {
-		fieldPath = fieldPath[dotIdx+1:]
+	// Try equality
+	if m := conditionEqRe.FindStringSubmatch(expr); m != nil {
+		fieldPath := stripAlias(m[1])
+		rawValue := strings.TrimSpace(m[2])
+		value, err := resolveValue(rawValue, paramMap)
+		if err != nil {
+			return queryCondition{}, err
+		}
+		return queryCondition{field: fieldPath, op: "=", value: value}, nil
 	}
 
-	value, err := resolveValue(rawValue, paramMap)
-	if err != nil {
-		return queryCondition{}, err
-	}
+	return queryCondition{}, fmt.Errorf("unsupported condition: %s", expr)
+}
 
-	return queryCondition{field: fieldPath, value: value}, nil
+// stripAlias removes a table alias prefix (e.g. "c.category" → "category").
+func stripAlias(field string) string {
+	if dotIdx := strings.IndexByte(field, '.'); dotIdx != -1 {
+		return field[dotIdx+1:]
+	}
+	return field
 }
 
 func resolveValue(raw string, paramMap map[string]interface{}) (interface{}, error) {
@@ -766,8 +912,22 @@ func matchesConditions(doc Document, conditions []queryCondition) bool {
 		if !ok {
 			return false
 		}
-		if !valuesEqual(docVal, cond.value) {
-			return false
+		switch cond.op {
+		case "IN":
+			matched := false
+			for _, v := range cond.values {
+				if valuesEqual(docVal, v) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return false
+			}
+		default:
+			if !valuesEqual(docVal, cond.value) {
+				return false
+			}
 		}
 	}
 	return true
