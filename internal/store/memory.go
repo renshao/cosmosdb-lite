@@ -557,24 +557,30 @@ func extractPartitionKey(doc Document, pk PartitionKey) string {
 }
 
 // generateRIDBytes generates n random bytes for use as a resource ID component.
+// Retries if the base64 encoding contains '+' (which breaks URL paths).
+// '/' is allowed in raw base64 because encodeRID replaces it with '-'.
 func generateRIDBytes(n int) []byte {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return b
-}
-
-// encodeRID encodes raw bytes as URL-safe base64, matching real CosmosDB _rid format.
-func encodeRID(b []byte) string {
-	return base64.URLEncoding.EncodeToString(b)
-}
-
-// decodeRID decodes a base64-encoded _rid back to raw bytes.
-// Accepts both URL-safe and standard base64 for backward compatibility.
-func decodeRID(rid string) []byte {
-	b, err := base64.URLEncoding.DecodeString(rid)
-	if err != nil {
-		b, _ = base64.StdEncoding.DecodeString(rid)
+	for {
+		b := make([]byte, n)
+		_, _ = rand.Read(b)
+		encoded := base64.StdEncoding.EncodeToString(b)
+		if !strings.Contains(encoded, "+") {
+			return b
+		}
 	}
+}
+
+// encodeRID encodes raw bytes using CosmosDB's RID encoding:
+// standard base64 with '/' replaced by '-'.
+// This matches the .NET SDK's ResourceIdentifier.ToBase64String.
+func encodeRID(b []byte) string {
+	return strings.ReplaceAll(base64.StdEncoding.EncodeToString(b), "/", "-")
+}
+
+// decodeRID decodes a CosmosDB-encoded _rid back to raw bytes.
+// Reverses the '-' → '/' replacement then decodes standard base64.
+func decodeRID(rid string) []byte {
+	b, _ := base64.StdEncoding.DecodeString(strings.ReplaceAll(rid, "-", "/"))
 	return b
 }
 
