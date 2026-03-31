@@ -51,11 +51,17 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 		// Try 1: name-based resource link from the URL path
 		err := auth.ValidateAuth(verb, resourceType, resourceLink, date, authHeader)
 
+		var failedLinks []string
 		if err != nil {
-			// Try 2: RID-based — use just the target resource's _rid
-			ridLink := parseRIDResourceLink(r.URL.Path)
+			failedLinks = append(failedLinks, resourceLink)
+			// Try 2: RID-based — use just the target resource's _rid (lowercased).
+			// The .NET SDK lowercases the resourceId for RID-based paths in the string-to-sign.
+			ridLink := strings.ToLower(parseRIDResourceLink(r.URL.Path))
 			if ridLink != "" && ridLink != resourceLink {
 				err = auth.ValidateAuth(verb, resourceType, ridLink, date, authHeader)
+				if err != nil {
+					failedLinks = append(failedLinks, ridLink)
+				}
 			}
 		}
 
@@ -65,14 +71,47 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 				_, nameLink := parseAuthResource("/" + resolved)
 				if nameLink != resourceLink {
 					err = auth.ValidateAuth(verb, resourceType, nameLink, date, authHeader)
+					if err != nil {
+						failedLinks = append(failedLinks, nameLink)
+					}
 				}
 			}
 		}
 
 		if err != nil {
+			// Try 4: include the resource type in the link (e.g., "dbs/rid1/colls/rid2/pkranges")
+			fullLink := strings.Trim(r.URL.Path, "/")
+			if fullLink != resourceLink {
+				err = auth.ValidateAuth(verb, resourceType, fullLink, date, authHeader)
+				if err != nil {
+					failedLinks = append(failedLinks, fullLink)
+				}
+			}
+		}
+
+		if err != nil {
+			log.Printf("AUTH FAILED %s %s resType=%q failedLinks=%v", r.Method, r.URL.Path, resourceType, failedLinks)
 			writeError(w, http.StatusUnauthorized, "Unauthorized", err.Error())
 			return
 		}
+
+		// Determine which link succeeded
+		successLink := resourceLink
+		if len(failedLinks) > 0 {
+			// If we had failures, the successful link is whichever wasn't in failedLinks
+			ridLink := parseRIDResourceLink(r.URL.Path)
+			if len(failedLinks) == 1 {
+				if ridLink != "" && ridLink != resourceLink {
+					successLink = ridLink
+				}
+			} else if len(failedLinks) >= 2 {
+				if resolved, ok := rt.store.ResolveRIDPath(r.URL.Path); ok {
+					_, nameLink := parseAuthResource("/" + resolved)
+					successLink = nameLink
+				}
+			}
+		}
+		log.Printf("AUTH OK     %s %s resType=%q successLink=%q failedLinks=%v", r.Method, r.URL.Path, resourceType, successLink, failedLinks)
 
 		next.ServeHTTP(w, r)
 	})
