@@ -54,6 +54,7 @@ func NewRouter(s store.Store, authEnabled bool) *Router {
 	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/docs", wrap(rt.handleListDocuments))
 	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handleGetDocument))
 	rt.mux.Handle("PUT /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handleReplaceDocument))
+	rt.mux.Handle("PATCH /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handlePatchDocument))
 	rt.mux.Handle("DELETE /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handleDeleteDocument))
 
 	// Partition key ranges

@@ -150,6 +150,100 @@ func (rt *Router) handleReplaceDocument(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, replaced)
 }
 
+// patchOperation represents a single CosmosDB patch operation.
+type patchOperation struct {
+	Op    string      `json:"op"`
+	Path  string      `json:"path"`
+	Value interface{} `json:"value,omitempty"`
+}
+
+// patchRequest represents the CosmosDB patch request body.
+type patchRequest struct {
+	Operations []patchOperation `json:"operations"`
+}
+
+func (rt *Router) handlePatchDocument(w http.ResponseWriter, r *http.Request) {
+	dbId := r.PathValue("dbId")
+	collId := r.PathValue("collId")
+	docId := r.PathValue("docId")
+
+	var req patchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "BadRequest", "invalid JSON body")
+		return
+	}
+
+	partitionKey := parsePartitionKey(r.Header.Get("x-ms-documentdb-partitionkey"))
+
+	// Try to get the existing document; if not found, create a new one.
+	doc, err := rt.store.GetDocument(dbId, collId, docId, partitionKey)
+	isNew := false
+	if err != nil {
+		var nf *store.ErrNotFound
+		if errors.As(err, &nf) {
+			doc = store.Document{"id": docId}
+			isNew = true
+		} else {
+			writeError(w, http.StatusInternalServerError, "InternalError", err.Error())
+			return
+		}
+	}
+
+	// Apply patch operations
+	for _, op := range req.Operations {
+		field := strings.TrimPrefix(op.Path, "/")
+		switch strings.ToLower(op.Op) {
+		case "set", "add", "replace":
+			doc[field] = op.Value
+		case "remove":
+			delete(doc, field)
+		case "incr", "increment":
+			cur, _ := toFloat64(doc[field])
+			delta, _ := toFloat64(op.Value)
+			doc[field] = cur + delta
+		default:
+			writeError(w, http.StatusBadRequest, "BadRequest", fmt.Sprintf("unsupported patch op: %s", op.Op))
+			return
+		}
+	}
+
+	var result store.Document
+	if isNew {
+		result, err = rt.store.CreateDocument(dbId, collId, doc)
+	} else {
+		result, err = rt.store.ReplaceDocument(dbId, collId, docId, doc)
+	}
+	if err != nil {
+		var nf *store.ErrNotFound
+		if errors.As(err, &nf) {
+			writeError(w, http.StatusNotFound, "NotFound", nf.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "InternalError", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// toFloat64 converts a value to float64 for increment operations.
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case nil:
+		return 0, true
+	default:
+		return 0, false
+	}
+}
+
 func (rt *Router) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	dbId := r.PathValue("dbId")
 	collId := r.PathValue("collId")
