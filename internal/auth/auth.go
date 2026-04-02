@@ -34,10 +34,15 @@ func ValidateAuth(verb, resourceType, resourceLink, date, authHeader string) err
 		return fmt.Errorf("missing Authorization header")
 	}
 
-	// URL-decode the auth header
-	decoded, err := url.QueryUnescape(authHeader)
-	if err != nil {
-		return fmt.Errorf("invalid Authorization header encoding: %w", err)
+	// URL-decode the auth header if it's URL-encoded (SDK sends encoded,
+	// web UI sends decoded). Detect by checking for '%' which indicates encoding.
+	decoded := authHeader
+	if strings.Contains(authHeader, "%") {
+		var err error
+		decoded, err = url.QueryUnescape(authHeader)
+		if err != nil {
+			return fmt.Errorf("invalid Authorization header encoding: %w", err)
+		}
 	}
 
 	// Parse type=master&ver=1.0&sig=...

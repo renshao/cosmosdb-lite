@@ -168,7 +168,9 @@ func (rt *Router) handlePatchDocument(w http.ResponseWriter, r *http.Request) {
 	docId := r.PathValue("docId")
 
 	var req patchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	bodyBytes, _ := io.ReadAll(r.Body)
+	fmt.Printf("DEBUG PatchDocument db=%s coll=%s doc=%s body=%s\n", dbId, collId, docId, string(bodyBytes))
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "BadRequest", "invalid JSON body")
 		return
 	}
@@ -223,6 +225,8 @@ func (rt *Router) handlePatchDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	respBytes, _ := json.Marshal(result)
+	fmt.Printf("DEBUG PatchDocument response=%s\n", string(respBytes))
 	writeJSON(w, http.StatusOK, result)
 }
 
