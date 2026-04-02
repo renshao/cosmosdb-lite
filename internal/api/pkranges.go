@@ -25,6 +25,13 @@ func (rt *Router) handleGetPKRanges(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var nf *store.ErrNotFound
 		if errors.As(err, &nf) {
+			// The collID may be the database's _rid — the SDK uses this pattern
+			// to request pkranges at the database level.
+			db, dbErr := rt.store.GetDatabase(dbID)
+			if dbErr == nil && db.RID == collID {
+				rt.writeDBPKRanges(w, r, dbID)
+				return
+			}
 			writeError(w, http.StatusNotFound, "NotFound", nf.Error())
 			return
 		}
@@ -40,6 +47,30 @@ func (rt *Router) handleGetPKRanges(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("ETag", etag)
 	writeJSON(w, http.StatusOK, buildPKRangesResponse(coll))
+}
+
+// writeDBPKRanges returns partition key ranges when the SDK sends the database
+// RID as the collection ID. Returns a single pkrange using the first container
+// to avoid overlapping ranges (each container covers the full "" to "FF" space).
+func (rt *Router) writeDBPKRanges(w http.ResponseWriter, r *http.Request, dbID string) {
+	containers, err := rt.store.ListContainers(dbID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "InternalError", err.Error())
+		return
+	}
+	if len(containers) == 0 {
+		writeError(w, http.StatusNotFound, "NotFound", "no containers in database")
+		return
+	}
+
+	etag := containers[0].ETag
+	if ifNoneMatch := r.Header.Get("If-None-Match"); ifNoneMatch != "" && ifNoneMatch == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("ETag", etag)
+	writeJSON(w, http.StatusOK, buildPKRangesResponse(containers[0]))
 }
 
 // buildPKRangesResponse builds a full pkranges response for a single container.

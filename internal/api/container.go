@@ -49,6 +49,7 @@ func (rt *Router) handleCreateContainer(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Location", "dbs/"+dbID+"/colls/"+req.ID)
 	if db, dbErr := rt.store.GetDatabase(dbID); dbErr == nil {
+		w.Header().Set("x-ms-content-path", db.RID)
 		w.Header().Set("x-ms-alt-content-path", "dbs/"+db.ID)
 	}
 	w.Header().Set("x-ms-quorum-acked-lsn", "1")
