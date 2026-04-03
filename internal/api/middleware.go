@@ -48,84 +48,58 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 
 		authHeader := r.Header.Get("Authorization")
 
-		// Try 1: name-based resource link from the URL path
-		err := auth.ValidateAuth(verb, resourceType, resourceLink, date, authHeader)
-
+		var err error
 		var failedLinks []string
-		if err != nil {
-			failedLinks = append(failedLinks, resourceLink)
-			// Try 2: RID-based — use just the target resource's _rid (lowercased).
-			// The .NET SDK lowercases the resourceId for RID-based paths in the string-to-sign.
+
+		if resourceType == "pkranges" {
+			// For pkranges, the SDK uses RID-based auth: the resource link is just
+			// the collection RID (lowercased) extracted from the URL path.
 			ridLink := strings.ToLower(parseRIDResourceLink(r.URL.Path))
-			if ridLink != "" && ridLink != resourceLink {
-				err = auth.ValidateAuth(verb, resourceType, ridLink, date, authHeader)
-				if err != nil {
-					failedLinks = append(failedLinks, ridLink)
-				}
-			}
-		}
+			err = auth.ValidateAuth(verb, resourceType, ridLink, date, authHeader)
 
-		if err != nil {
-			// Try 3: resolve _rid path to name-based path and re-derive resource link
-			if resolved, ok := rt.store.ResolveRIDPath(r.URL.Path); ok {
-				_, nameLink := parseAuthResource("/" + resolved)
-				if nameLink != resourceLink {
-					err = auth.ValidateAuth(verb, resourceType, nameLink, date, authHeader)
-					if err != nil {
-						failedLinks = append(failedLinks, nameLink)
+			if err != nil {
+				failedLinks = append(failedLinks, ridLink)
+
+				// Fallback: .NET SDK PartitionKeyRangeCache race condition workaround.
+				//
+				// The SDK sometimes sends pkranges requests with the DATABASE RID as
+				// both dbId and collId in the URL:
+				//   GET /dbs/{dbRid}/colls/{dbRid}/pkranges
+				//
+				// However, the auth signature is computed using the REAL container RID
+				// (from request.ResourceAddress in DocumentServiceRequest), not the URL.
+				//
+				// This happens because DocumentServiceRequest.Create() receives the
+				// container RID for signing, but the URL is constructed using the
+				// database RID as a placeholder. To handle this, we try all container
+				// RIDs in the database until one matches the client's signature.
+				dbID := r.PathValue("dbId")
+				if dbID != "" {
+					if resolvedDB, ok := rt.store.ResolveDBID(dbID); ok {
+						dbID = resolvedDB
 					}
-				}
-			}
-		}
-
-		if err != nil {
-			// Try 4: include the resource type in the link (e.g., "dbs/rid1/colls/rid2/pkranges")
-			fullLink := strings.Trim(r.URL.Path, "/")
-			if fullLink != resourceLink {
-				err = auth.ValidateAuth(verb, resourceType, fullLink, date, authHeader)
-				if err != nil {
-					failedLinks = append(failedLinks, fullLink)
-				}
-			}
-		}
-
-		if err != nil && resourceType == "pkranges" {
-			// Try 5: SDK PartitionKeyRangeCache race condition workaround.
-			//
-			// The .NET SDK's PartitionKeyRangeCache sometimes sends pkranges requests
-			// with the DATABASE RID as both dbId and collId in the URL:
-			//   GET /dbs/{dbRid}/colls/{dbRid}/pkranges
-			//
-			// However, the auth signature is computed using the REAL container RID
-			// (from request.ResourceAddress in DocumentServiceRequest), not the URL path.
-			//
-			// This happens because:
-			// 1. DocumentServiceRequest.Create() receives the container RID and stores it
-			//    as ResourceAddress for signing
-			// 2. But the URL is constructed using the database RID as a placeholder
-			// 3. The SDK signs: "get\npkranges\n{containerRID_lowercased}\n{date}\n\n"
-			//    while the URL contains: /dbs/{dbRID}/colls/{dbRID}/pkranges
-			//
-			// To handle this, we try all container RIDs in the database until one matches
-			// the client's signature.
-			dbID := r.PathValue("dbId")
-			if dbID != "" {
-				if resolvedDB, ok := rt.store.ResolveDBID(dbID); ok {
-					dbID = resolvedDB
-				}
-				if containers, listErr := rt.store.ListContainers(dbID); listErr == nil {
-					for _, c := range containers {
-						collRID := strings.ToLower(c.RID)
-						tryErr := auth.ValidateAuth(verb, resourceType, collRID, date, authHeader)
-						if tryErr == nil {
-							err = nil
-							log.Printf("AUTH Try5 container=%q rid=%q → OK", c.ID, collRID)
-							break
+					if containers, listErr := rt.store.ListContainers(dbID); listErr == nil {
+						for _, c := range containers {
+							collRID := strings.ToLower(c.RID)
+							if collRID == ridLink {
+								continue // already tried
+							}
+							tryErr := auth.ValidateAuth(verb, resourceType, collRID, date, authHeader)
+							if tryErr == nil {
+								err = nil
+								break
+							}
+							failedLinks = append(failedLinks, collRID)
 						}
-						log.Printf("AUTH Try5 container=%q rid=%q → FAILED", c.ID, collRID)
-						failedLinks = append(failedLinks, collRID)
 					}
 				}
+			}
+		} else {
+			// For all other resource types, use name-based auth: the resource link
+			// is the full path (e.g., "dbs/mydb/colls/mycoll").
+			err = auth.ValidateAuth(verb, resourceType, resourceLink, date, authHeader)
+			if err != nil {
+				failedLinks = append(failedLinks, resourceLink)
 			}
 		}
 
@@ -135,23 +109,7 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Determine which link succeeded
-		successLink := resourceLink
-		if len(failedLinks) > 0 {
-			// If we had failures, the successful link is whichever wasn't in failedLinks
-			ridLink := parseRIDResourceLink(r.URL.Path)
-			if len(failedLinks) == 1 {
-				if ridLink != "" && ridLink != resourceLink {
-					successLink = ridLink
-				}
-			} else if len(failedLinks) >= 2 {
-				if resolved, ok := rt.store.ResolveRIDPath(r.URL.Path); ok {
-					_, nameLink := parseAuthResource("/" + resolved)
-					successLink = nameLink
-				}
-			}
-		}
-		log.Printf("AUTH OK     %s %s resType=%q successLink=%q failedLinks=%v", r.Method, r.URL.Path, resourceType, successLink, failedLinks)
+		log.Printf("AUTH OK     %s %s resType=%q failedLinks=%v", r.Method, r.URL.Path, resourceType, failedLinks)
 
 		next.ServeHTTP(w, r)
 	})
