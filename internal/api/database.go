@@ -43,6 +43,7 @@ func (rt *Router) handleListDatabases(w http.ResponseWriter, r *http.Request) {
 		"_rid":      "",
 		"_count":    len(dbs),
 		"Databases": dbs,
+		"items":     dbs,
 	})
 }
 

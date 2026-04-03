@@ -57,9 +57,8 @@ func NewRouter(s store.Store, authEnabled bool) *Router {
 	rt.mux.Handle("PATCH /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handlePatchDocument))
 	rt.mux.Handle("DELETE /dbs/{dbId}/colls/{collId}/docs/{docId}", wrap(rt.handleDeleteDocument))
 
-	// Partition key ranges (no auth — SDK constructs non-standard RID paths that
-	// don't match any auth derivation we can compute server-side)
-	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/pkranges", rt.commonHeaders(rt.ridResolver(http.HandlerFunc(rt.handleGetPKRanges))))
+	// Partition key ranges
+	rt.mux.Handle("GET /dbs/{dbId}/colls/{collId}/pkranges", wrap(rt.handleGetPKRanges))
 
 	// Web UI (no auth)
 	rt.mux.Handle("GET /_explorer/", http.StripPrefix("/_explorer/", http.FileServer(http.Dir("internal/webui/static"))))

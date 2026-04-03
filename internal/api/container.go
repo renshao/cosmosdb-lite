@@ -49,19 +49,9 @@ func (rt *Router) handleCreateContainer(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Location", "dbs/"+dbID+"/colls/"+req.ID)
 	if db, dbErr := rt.store.GetDatabase(dbID); dbErr == nil {
-		w.Header().Set("x-ms-content-path", db.RID)
 		w.Header().Set("x-ms-alt-content-path", "dbs/"+db.ID)
+		w.Header().Set("x-ms-content-path", db.RID)
 	}
-	w.Header().Set("x-ms-quorum-acked-lsn", "1")
-	w.Header().Set("x-ms-current-write-quorum", "3")
-	w.Header().Set("x-ms-current-replica-set-size", "4")
-	w.Header().Set("x-ms-documentdb-partitionkeyrangeid", "0")
-	w.Header().Set("x-ms-cosmos-llsn", "1")
-	w.Header().Set("x-ms-cosmos-quorum-acked-llsn", "1")
-	w.Header().Set("x-ms-cosmos-item-llsn", "1")
-	w.Header().Set("x-ms-cosmos-physical-partition-id", "0")
-	w.Header().Set("x-ms-cosmos-max-content-length", "2097152")
-	w.Header().Set("x-ms-cosmos-internal-partition-id", "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
 	writeJSON(w, http.StatusCreated, coll)
 }
 
@@ -89,6 +79,7 @@ func (rt *Router) handleListContainers(w http.ResponseWriter, r *http.Request) {
 		"_rid":                db.RID,
 		"_count":              len(containers),
 		"DocumentCollections": containers,
+		"items":               containers,
 	})
 }
 
@@ -111,8 +102,8 @@ func (rt *Router) handleGetContainer(w http.ResponseWriter, r *http.Request) {
 	// requests (e.g., pkranges). x-ms-content-path is the database RID,
 	// x-ms-alt-content-path is the name-based database path.
 	if db, dbErr := rt.store.GetDatabase(dbID); dbErr == nil {
-		w.Header().Set("x-ms-content-path", db.RID)
 		w.Header().Set("x-ms-alt-content-path", "dbs/"+db.ID)
+		w.Header().Set("x-ms-content-path", db.RID)
 	}
 
 	writeJSON(w, http.StatusOK, coll)

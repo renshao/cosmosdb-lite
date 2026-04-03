@@ -89,6 +89,46 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
+		if err != nil && resourceType == "pkranges" {
+			// Try 5: SDK PartitionKeyRangeCache race condition workaround.
+			//
+			// The .NET SDK's PartitionKeyRangeCache sometimes sends pkranges requests
+			// with the DATABASE RID as both dbId and collId in the URL:
+			//   GET /dbs/{dbRid}/colls/{dbRid}/pkranges
+			//
+			// However, the auth signature is computed using the REAL container RID
+			// (from request.ResourceAddress in DocumentServiceRequest), not the URL path.
+			//
+			// This happens because:
+			// 1. DocumentServiceRequest.Create() receives the container RID and stores it
+			//    as ResourceAddress for signing
+			// 2. But the URL is constructed using the database RID as a placeholder
+			// 3. The SDK signs: "get\npkranges\n{containerRID_lowercased}\n{date}\n\n"
+			//    while the URL contains: /dbs/{dbRID}/colls/{dbRID}/pkranges
+			//
+			// To handle this, we try all container RIDs in the database until one matches
+			// the client's signature.
+			dbID := r.PathValue("dbId")
+			if dbID != "" {
+				if resolvedDB, ok := rt.store.ResolveDBID(dbID); ok {
+					dbID = resolvedDB
+				}
+				if containers, listErr := rt.store.ListContainers(dbID); listErr == nil {
+					for _, c := range containers {
+						collRID := strings.ToLower(c.RID)
+						tryErr := auth.ValidateAuth(verb, resourceType, collRID, date, authHeader)
+						if tryErr == nil {
+							err = nil
+							log.Printf("AUTH Try5 container=%q rid=%q → OK", c.ID, collRID)
+							break
+						}
+						log.Printf("AUTH Try5 container=%q rid=%q → FAILED", c.ID, collRID)
+						failedLinks = append(failedLinks, collRID)
+					}
+				}
+			}
+		}
+
 		if err != nil {
 			log.Printf("AUTH FAILED %s %s resType=%q failedLinks=%v", r.Method, r.URL.Path, resourceType, failedLinks)
 			writeError(w, http.StatusUnauthorized, "Unauthorized", err.Error())

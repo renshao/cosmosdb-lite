@@ -96,6 +96,7 @@ func (rt *Router) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 		"_rid":      collRid,
 		"_count":    len(docs),
 		"Documents": docs,
+		"items":     docs,
 	})
 }
 
@@ -301,6 +302,7 @@ func (rt *Router) handleQueryDocuments(w http.ResponseWriter, r *http.Request) {
 		"_rid":      collRid,
 		"_count":    len(docs),
 		"Documents": docs,
+		"items":     docs,
 	})
 }
 
