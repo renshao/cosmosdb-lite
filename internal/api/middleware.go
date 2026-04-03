@@ -58,21 +58,12 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 			err = auth.ValidateAuth(verb, resourceType, ridLink, date, authHeader)
 
 			if err != nil {
+				log.Printf("RACE-DIAG: pkranges auth failed with URL-derived ridLink=%q err=%v", ridLink, err)
 				failedLinks = append(failedLinks, ridLink)
 
-				// Fallback: .NET SDK PartitionKeyRangeCache race condition workaround.
-				//
-				// The SDK sometimes sends pkranges requests with the DATABASE RID as
-				// both dbId and collId in the URL:
-				//   GET /dbs/{dbRid}/colls/{dbRid}/pkranges
-				//
-				// However, the auth signature is computed using the REAL container RID
-				// (from request.ResourceAddress in DocumentServiceRequest), not the URL.
-				//
-				// This happens because DocumentServiceRequest.Create() receives the
-				// container RID for signing, but the URL is constructed using the
-				// database RID as a placeholder. To handle this, we try all container
-				// RIDs in the database until one matches the client's signature.
+				// Probe all container RIDs to find which one the SDK actually signed with.
+				// This demonstrates the .NET SDK PartitionKeyRangeCache race condition:
+				// the URL uses the database RID, but the signature uses the real container RID.
 				dbID := r.PathValue("dbId")
 				if dbID != "" {
 					if resolvedDB, ok := rt.store.ResolveDBID(dbID); ok {
@@ -82,11 +73,15 @@ func (rt *Router) authMiddleware(next http.Handler) http.Handler {
 						for _, c := range containers {
 							collRID := strings.ToLower(c.RID)
 							if collRID == ridLink {
-								continue // already tried
+								continue
 							}
 							tryErr := auth.ValidateAuth(verb, resourceType, collRID, date, authHeader)
 							if tryErr == nil {
-								err = nil
+								log.Printf("RACE-DIAG: *** RACE CONDITION DETECTED ***")
+								log.Printf("RACE-DIAG:   URL collId:  %s (database RID)", parseRIDResourceLink(r.URL.Path))
+								log.Printf("RACE-DIAG:   Signed with: %s (container %q RID)", collRID, c.ID)
+								log.Printf("RACE-DIAG:   The SDK signed with a container RID that differs from the URL path")
+								// Deliberately do NOT clear err — fail the auth to demonstrate the bug
 								break
 							}
 							failedLinks = append(failedLinks, collRID)
